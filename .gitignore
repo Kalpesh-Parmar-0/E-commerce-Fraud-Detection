@@ -1,3 +1,8 @@
 /logs/
 /E_Commerce_Fraud_Detection.egg-info
 **/__pycache__/
+artifacts/
+data/
+*.csv
+*.pkl
+.ipynb_checkpoints/
