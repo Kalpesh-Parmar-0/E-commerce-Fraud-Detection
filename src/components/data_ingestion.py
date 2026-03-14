@@ -26,16 +26,23 @@ class DataIngestion:
             logging.info('train data reading using pandas')
             train_trans = pd.read_csv(self.ingestion_config.raw_train_transactions)
             train_id = pd.read_csv(self.ingestion_config.raw_train_identity)
+            print(f'Shape of transaction train data: {train_trans.shape}')
+            print(f'Shape of identity train data: {train_id.shape}')
             logging.info('train data reading complete')
 
             logging.info('test data reading start using pandas')
             test_trans = pd.read_csv(self.ingestion_config.raw_test_transactions)
             test_id = pd.read_csv(self.ingestion_config.raw_test_identity)
+
+            # some columns (id) are wrongly labeled in test_identity. We will correct it
+            test_id.columns = test_id.columns.str.replace("-", "_")
+            print(f'Shape of transaction train data: {test_trans.shape}')
+            print(f'Shape of identity train data: {test_id.shape}')
             logging.info('test data reading complete')
 
             logging.info("transaction and identity merge start")
-            train_df = train_trans.merge(train_id, on="TransactionID", how="left")
-            test_df = test_trans.merge(test_id, on="TransactionID", how="left")
+            train_df = train_trans.merge(train_id, on=["TransactionID"], how="left")
+            test_df = test_trans.merge(test_id, on=["TransactionID"], how="left")
             logging.info('transaction and identity merged in train_df and test_df')
 
             os.makedirs("artifacts", exist_ok=True)
