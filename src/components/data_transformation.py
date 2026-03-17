@@ -5,7 +5,7 @@ import pandas as pd
 
 from dataclasses import dataclass
 
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
@@ -67,11 +67,19 @@ class DataTransformation:
             d_cols = [col for col in df.columns if col.startswith("D")]
 
             for col in d_cols:
-                df[col + "_log"] = np.log1p(df[col])
+                if pd.api.types.is_numeric_dtype(df[col]):
+                    df[col + "_log"] = np.log1p(df[col].fillna(0).clip(lower=0))
+                else:
+                    logging.warning(f"Skipping log transformation for non-numeric column {col}")
 
             # Transaction amount transformation
             if "TransactionAmt" in df.columns:
-                df["TransactionAmt_log"] = np.log1p(df["TransactionAmt"])
+                if pd.api.types.is_numeric_dtype(df["TransactionAmt"]):
+                    df["TransactionAmt_log"] = np.log1p(
+                    df["TransactionAmt"].fillna(0).clip(lower=0)
+                    )
+                else:
+                    logging.warning("Skipping log transformation for TransactionAmt as it's not numeric")
 
             # Email match feature
             if "P_emaildomain" in df.columns and "R_emaildomain" in df.columns:
@@ -79,20 +87,63 @@ class DataTransformation:
                     df["P_emaildomain"] == df["R_emaildomain"]
                 ).astype(int)
 
+            # UID features
+            if {'card1', 'card2'}.issubset(df.columns):
+                df['uid'] = df['card1'].astype(str)+"_"+df['card2'].astype(str)
+
+            if {'uid', 'addr1'}.issubset(df.columns):
+                df['uid2'] = df['uid']+"_"+df['addr1'].astype(str)
+
+            if {'uid2', 'P_emaildomain'}.issubset(df.columns):
+                df['uid3'] = df['uid2']+"_"+df['P_emaildomain'].astype(str)
+
             logging.info("Feature engineering completed")
             return df
         
         except Exception as e:
             raise CustomeException(e, sys)
         
+    # transaction aggregation
+    def transaction_aggregations(self,train_df, test_df):
+        agg_cols = ["card1", "card2", "addr1", "uid"]
+
+        for col in agg_cols:
+            if col in train_df.columns and "TransactionAmt" in train_df.columns:
+                agg = train_df.groupby(col)['TransactionAmt'].agg(['mean','std'])
+                agg.columns = [f"{col}_amt_mean", f"{col}_amt_std"]
+
+                train_df = train_df.merge(agg, on=col, how="left")
+                test_df = test_df.merge(agg, on=col, how="left")
+
+                train_df[f"{col}_amt_diff"] = train_df["TransactionAmt"] - train_df[f"{col}_amt_mean"]
+                test_df[f"{col}_amt_diff"] = test_df["TransactionAmt"] - test_df[f"{col}_amt_mean"]
+                
+                test_df[f"{col}_amt_mean"].fillna(-1, inplace=True)
+                test_df[f"{col}_amt_std"].fillna(-1, inplace=True)
+        return train_df, test_df
+    
+    # transacton counts
+    def transaction_counts(self, train_df, test_df):
+        cols = ["card1", "uid"]
+
+        for col in cols:
+            if col in train_df.columns:
+                count = train_df[col].value_counts()
+
+                train_df[col + "_count"] = train_df[col].map(count)
+                test_df[col + "_count"] = test_df[col].map(count)
+
+        return train_df, test_df
+        
     # FREQUENCY ENCODING
     def frequency_encoding(self, train_df, test_df, columns):
 
         for col in columns:
-            freq = train_df[col].value_counts(normalize=True)
+            if col in train_df.columns:
+                freq = train_df[col].value_counts(normalize=True)
 
-            train_df[col] = train_df[col].map(freq)
-            test_df[col] = test_df[col].map(freq)
+                train_df[col] = train_df[col].map(freq)
+                test_df[col] = test_df[col].map(freq)
 
         return train_df, test_df
 
@@ -107,13 +158,12 @@ class DataTransformation:
             ['addr1', 'addr2', 'P_emaildomain', 'R_emaildomain'] + 
             ['M%d' % i for i in range(1, 10)] + 
             ['DeviceType', 'DeviceInfo'] +
-            ['id_%d' % i for i in range(12, 39)])
+            ['id_%d' % i for i in range(12, 39)]+
+            ['uid','uid2','uid3'])
 
             numerical_columns = df.drop(columns=[target_column] + cat_cols, errors="ignore").columns.tolist()
-            categorical_columns = [col for col in cat_cols if col in df.columns]
 
             logging.info(f"Numerical columns count: {len(numerical_columns)}")
-            logging.info(f"Categorical columns count: {len(categorical_columns)}")
 
             # numerical pipeline
             num_pipeline = Pipeline(
@@ -122,14 +172,6 @@ class DataTransformation:
                     ("scaler", StandardScaler())
                 ]
             )
-
-            # categorical pipeline
-            # cat_pipeline = Pipeline(
-            #     steps=[
-            #         ("imputer", SimpleImputer(strategy="most_frequent")),
-            #         ("onehot", OneHotEncoder(handle_unknown="ignore"))
-            #     ]
-            # )
 
             preprocessor = ColumnTransformer(
                 [
@@ -159,6 +201,9 @@ class DataTransformation:
             train_df = self.feature_engineering(train_df)
             test_df = self.feature_engineering(test_df)
 
+            train_df, test_df = self.transaction_aggregations(train_df, test_df)
+            train_df, test_df = self.transaction_counts(train_df, test_df)
+
             cat_cols = (
                 ['ProductCD'] +
                 ['card%d' % i for i in range(1, 7)] +
@@ -179,19 +224,20 @@ class DataTransformation:
             target_column = "isFraud"
 
             logging.info("Splitting train data into dependent and independent features")
-            input_feature_train_df = train_df.drop(columns=[target_column], axis=1)
+            input_feature_train_df = train_df.drop(columns=[target_column])
             target_feature_train_df = train_df[target_column]
 
-            logging.info("Splitting test data into dependent and independent features")
-            input_feature_test_df = test_df.drop(columns=[target_column], axis=1)
-            target_feature_test_df = test_df[target_column]
+            logging.info("preparing test data")
+            input_feature_test_df = test_df.copy()
+            # target_feature_test_df = test_df[target_column]
 
             logging.info("Appling preprocessing object on training datafrem and testing dataframe")
             input_train_arr = preprocess_obj.fit_transform(input_feature_train_df)
             input_test_arr = preprocess_obj.transform(input_feature_test_df)
 
             train_arr = np.c_[input_train_arr, np.array(target_feature_train_df)]
-            test_arr = np.c_[input_test_arr, np.array(target_feature_test_df)]
+            # test_arr = np.c_[input_test_arr, np.array(target_feature_test_df)]
+            test_arr = input_test_arr
 
             save_object (
                 file_path = self.data_transformation_config.preprocess_obj_file_path,

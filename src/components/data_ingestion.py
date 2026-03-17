@@ -2,8 +2,8 @@ import os, sys
 from src.logger import logging
 from src.exception import CustomeException
 from dataclasses import dataclass
-
 import pandas as pd
+from src.components.data_transformation import DataTransformation
 
 @dataclass
 class DataIngestionConfig:
@@ -61,5 +61,11 @@ class DataIngestion:
             raise CustomeException(e, sys)
         
 if __name__ == "__main__":
-    obj = DataIngestion()
-    obj.initiate_data_ingestion()
+    # obj = DataIngestion()
+    # train_data_path, test_data_path = obj.initiate_data_ingestion()
+
+    train_data_path = "artifacts/train_merged.csv"
+    test_data_path = "artifacts/test_merged.csv"
+    data_transformation = DataTransformation()
+    train_arr, test_arr, _ = data_transformation.initiate_data_transformation(train_data_path, test_data_path)
+
