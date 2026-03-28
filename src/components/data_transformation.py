@@ -9,6 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
 
 from src.logger import logging
 from src.exception import CustomeException
@@ -21,7 +22,6 @@ class DataTransformationConfig:
 class DataTransformation:
     def __init__(self):
         self.data_transformation_config = DataTransformationConfig()
-
 
     # clean columns
     def clean_columns(self, df):
@@ -109,7 +109,7 @@ class DataTransformation:
 
         for col in agg_cols:
             if col in train_df.columns and "TransactionAmt" in train_df.columns:
-                agg = train_df.groupby(col)['TransactionAmt'].agg(['mean','std'])
+                agg = train_df.groupby(col)['TransactionAmt'].agg(['mean','std']).astype('float32')
                 agg.columns = [f"{col}_amt_mean", f"{col}_amt_std"]
 
                 train_df = train_df.merge(agg, on=col, how="left")
@@ -145,45 +145,27 @@ class DataTransformation:
                 train_df[col] = train_df[col].map(freq)
                 test_df[col] = test_df[col].map(freq)
 
+                test_df[col].fillna(0, inplace=True)
         return train_df, test_df
-
-    # preprocessing pipeline
-    def get_data_transformation_object(self, df):
+    
+    def reduce_memory(self, df):
         try:
-            logging.info('Creating preprocessing pipeline')
-            target_column = 'isFraud'
-
-            cat_cols = (['ProductCD'] + 
-            ['card%d' % i for i in range(1, 7)] + 
-            ['addr1', 'addr2', 'P_emaildomain', 'R_emaildomain'] + 
-            ['M%d' % i for i in range(1, 10)] + 
-            ['DeviceType', 'DeviceInfo'] +
-            ['id_%d' % i for i in range(12, 39)]+
-            ['uid','uid2','uid3'])
-
-            numerical_columns = df.drop(columns=[target_column] + cat_cols, errors="ignore").columns.tolist()
-
-            logging.info(f"Numerical columns count: {len(numerical_columns)}")
-
-            # numerical pipeline
-            num_pipeline = Pipeline(
-                steps=[
-                    ("imputer", SimpleImputer(strategy="median")),
-                    ("scaler", StandardScaler())
-                ]
-            )
-
-            preprocessor = ColumnTransformer(
-                [
-                    ("num_pipeline", num_pipeline, numerical_columns),
-                    # ("cat_pipeline", cat_pipeline, categorical_columns)
-                ]
-            )
-
-            return preprocessor
-
+            logging.info("Reducing memory usage of dataframe")
+            for col in df.columns:
+                if df[col].dtype == 'float64':
+                    df[col] = df[col].astype('float32')
+                elif df[col].dtype == 'int64':
+                    df[col] = df[col].astype('int32')
+            return df
         except Exception as e:
             raise CustomeException(e, sys)
+
+    # preprocessing pipeline
+    def get_preprocessor(self):
+        return Pipeline([
+            ("imputer", SimpleImputer(strategy="median"))
+        ])
+        
         
     # run complete transformation
     def initiate_data_transformation(self, train_path, test_path):
@@ -204,6 +186,10 @@ class DataTransformation:
             train_df, test_df = self.transaction_aggregations(train_df, test_df)
             train_df, test_df = self.transaction_counts(train_df, test_df)
 
+            # reduce memory
+            train_df = self.reduce_memory(train_df)
+            test_df = self.reduce_memory(test_df)
+
             cat_cols = (
                 ['ProductCD'] +
                 ['card%d' % i for i in range(1, 7)] +
@@ -219,36 +205,33 @@ class DataTransformation:
                 cat_cols
             )
 
-            preprocess_obj = self.get_data_transformation_object(train_df)
-
             target_column = "isFraud"
 
-            logging.info("Splitting train data into dependent and independent features")
-            input_feature_train_df = train_df.drop(columns=[target_column])
-            target_feature_train_df = train_df[target_column]
+            X = train_df.drop(columns=[target_column])
+            y = train_df[target_column]
 
-            logging.info("preparing test data")
-            input_feature_test_df = test_df.copy()
-            # target_feature_test_df = test_df[target_column]
+            X_train, X_val, y_train, y_val = train_test_split(
+                X, y, test_size=0.2, stratify=y, random_state=42
+            )
 
-            logging.info("Appling preprocessing object on training datafrem and testing dataframe")
-            input_train_arr = preprocess_obj.fit_transform(input_feature_train_df)
-            input_test_arr = preprocess_obj.transform(input_feature_test_df)
+            preprocessor = self.get_preprocessor()
 
-            train_arr = np.c_[input_train_arr, np.array(target_feature_train_df)]
-            # test_arr = np.c_[input_test_arr, np.array(target_feature_test_df)]
-            test_arr = input_test_arr
+            X_train = preprocessor.fit_transform(X_train)
+            X_val = preprocessor.transform(X_val)
+
+            train_arr = np.c_[X_train, y_train]
+            val_arr = np.c_[X_val, y_val]
 
             save_object (
                 file_path = self.data_transformation_config.preprocess_obj_file_path,
-                obj = preprocess_obj
+                obj = preprocessor
             )
 
             logging.info('preprosessor saved')
 
             return (
                 train_arr,
-                test_arr,
+                val_arr,
                 self.data_transformation_config.preprocess_obj_file_path
             )
 
