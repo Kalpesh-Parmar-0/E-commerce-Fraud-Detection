@@ -10,6 +10,7 @@ from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
+from sklearn.base import BaseEstimator, TransformerMixin
 
 from src.logger import logging
 from src.exception import CustomeException
@@ -215,31 +216,36 @@ class DataTransformation:
                 X, y, test_size=0.2, stratify=y, random_state=42
             )
 
-            preprocessor = self.get_preprocessor()
-
-            X_train = preprocessor.fit_transform(X_train)
-            X_val = preprocessor.transform(X_val)
-
-            train_arr = np.c_[X_train, y_train]
-            val_arr = np.c_[X_val, y_val]
+            train_arr = np.c_[X_train.values, y_train.values]
+            val_arr = np.c_[X_val.values, y_val.values]
 
             # ✅ FREE MEMORY HERE
             del train_df, test_df, X, y
             import gc
             gc.collect()
 
-            save_object (
-                file_path = self.data_transformation_config.preprocess_obj_file_path,
-                obj = preprocessor
-            )
-
             logging.info('preprosessor saved')
 
             return (
                 train_arr,
-                val_arr,
-                self.data_transformation_config.preprocess_obj_file_path
+                val_arr
             )
 
         except Exception as e:
             raise CustomeException(e, sys)
+        
+class FeatureEngineeringTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        self.data_transformation = DataTransformation()
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        X = self.data_transformation.clean_columns(X)
+        X = self.data_transformation.feature_engineering(X)
+
+        # ⚠️ keep only numeric
+        X = X.select_dtypes(exclude=["object"])
+
+        return X
