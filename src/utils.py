@@ -35,9 +35,6 @@ def evaluate_model(X_train, y_train, X_test, y_test, models, params):
 
             logging.info(f"best parameters for {model_name} are {RS.best_params_}")
 
-            model.set_params(**RS.best_params_)
-            model.fit(X_train, y_train)
-
             y_pred_proba = best_model.predict_proba(X_test)[:, 1]
             roc_auc = roc_auc_score(y_test, y_pred_proba)
 

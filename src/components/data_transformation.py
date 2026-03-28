@@ -208,6 +208,7 @@ class DataTransformation:
             target_column = "isFraud"
 
             X = train_df.drop(columns=[target_column])
+            X = X.select_dtypes(exclude=["object"])
             y = train_df[target_column]
 
             X_train, X_val, y_train, y_val = train_test_split(
@@ -221,6 +222,11 @@ class DataTransformation:
 
             train_arr = np.c_[X_train, y_train]
             val_arr = np.c_[X_val, y_val]
+
+            # ✅ FREE MEMORY HERE
+            del train_df, test_df, X, y
+            import gc
+            gc.collect()
 
             save_object (
                 file_path = self.data_transformation_config.preprocess_obj_file_path,

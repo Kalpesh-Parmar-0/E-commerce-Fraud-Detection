@@ -19,7 +19,7 @@ class ModelTrainer:
     def __init__(self):
         self.model_trainer_config = ModelTrainerConfig()
 
-    def initiate_model_trainer(self, train_array, test_array):
+    def initiate_model_trainer(self, train_array, val_array):
         try:
             logging.info("splitting to X_train, y_train, X_val, y_val")
             X_train, y_train, X_val, y_val = (
@@ -30,9 +30,9 @@ class ModelTrainer:
             )
 
             models = {
-                "Random Forest": RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=1),
-                "XGB Classifier": XGBClassifier(eval_metric='logloss', random_state=42, n_jobs=1),
-                "LGB Classifier": LGBMClassifier(class_weight = 'balanced', random_state=42, n_jobs=1)
+                "Random Forest": RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=2),
+                "XGB Classifier": XGBClassifier(eval_metric='logloss', random_state=42, n_jobs=2),
+                "LGB Classifier": LGBMClassifier(class_weight = 'balanced', random_state=42, n_jobs=2)
             }
 
             params = {
@@ -66,7 +66,7 @@ class ModelTrainer:
             
             best_model_name = max(model_report, key=lambda x: model_report[x]["score"])
             best_model_score = model_report[best_model_name]["score"]
-            best_model = models[best_model_name]["model"]
+            best_model = model_report[best_model_name]["model"]
 
             logging.info(f"Best model found, model name is {best_model_name}, accuracy score is {best_model_score}")
             save_object(file_path=self.model_trainer_config.train_model_file_path, obj=best_model)
