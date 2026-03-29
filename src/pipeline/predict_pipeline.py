@@ -1,16 +1,66 @@
 import os, sys
 from src.logger import logging
+import pandas as pd
 from src.exception import CustomeException
 from dataclasses import dataclass
 from src.utils import load_object
+from src.components.data_transformation import DataTransformation, FeatureMaps
 
 class PredictPipeline:
     def __init__(self):
-        self.pipeline = load_object("artifacts/model_trainer/model.pkl")
-
-    def predict(self, features):
         try:
-            return self.pipeline.predict(features)
+            self.model = load_object("artifacts/model_trainer/model.pkl")
+            self.maps = load_object("artifacts/data_transformation/feature_maps.pkl")
+            self.columns = load_object("artifacts/data_transformation/columns.pkl")
+
+            self.data_transformation = DataTransformation()
+
+            logging.info("Prediction pipeline loaded successfully")
+
+        except Exception as e:
+            raise CustomeException(e, sys)
+
+    def apply_transaction_aggregations(self, df):
+        for col, agg in self.maps.agg_maps.items():
+            if col in df.columns:
+                df = df.merge(agg, on=col, how="left")
+
+                df[f"{col}_amt_diff"] = df["TransactionAmt"] - df[f"{col}_amt_mean"]
+
+                df[f"{col}_amt_mean"].fillna(-1, inplace=True)
+                df[f"{col}_amt_std"].fillna(-1, inplace=True)
+
+        return df
+    
+    # ✅ apply frequency encoding
+    def apply_frequency_encoding(self, df):
+        for col, freq_map in self.maps.freq_maps.items():
+            if col in df.columns:
+                df[col] = df[col].map(freq_map)
+                df[col].fillna(0, inplace=True)
+        return df
+
+    def predict(self, features:pd.DataFrame):
+        try:
+            logging.info("Starting prediction")
+            df = self.data_transformation.clean_columns(features)
+            df = self.data_transformation.feature_engineering(df)
+
+            df = self.apply_transaction_aggregations(df)
+            df = self.apply_frequency_encoding(df)
+
+            # keep only numeric
+            df = df.select_dtypes(exclude=["object"])
+
+            # ensure same columns as training
+            df = df.reindex(columns=self.columns, fill_value=0)
+
+            df = self.data_transformation.reduce_memory(df)
+            
+            preds = self.model.predict(df)
+            logging.info("Prediction completed")
+            
+            return preds
         
         except Exception as e:
             raise CustomeException(e, sys)

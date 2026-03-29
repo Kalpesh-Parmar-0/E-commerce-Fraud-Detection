@@ -68,7 +68,7 @@ if __name__ == "__main__":
     train_data_path = "artifacts/train_merged.csv"
     test_data_path = "artifacts/test_merged.csv"
     data_transformation = DataTransformation()
-    train_arr, val_arr, _ = data_transformation.initiate_data_transformation(train_data_path, test_data_path)
+    X_train, X_val, y_train, y_val = data_transformation.initiate_data_transformation(train_data_path, test_data_path)
 
     model_trainer = ModelTrainer()
-    print(model_trainer.initiate_model_trainer(train_arr, val_arr))
+    print(model_trainer.initiate_model_trainer(X_train, X_val, y_train, y_val))

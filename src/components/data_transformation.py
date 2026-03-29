@@ -4,13 +4,10 @@ import numpy as np
 import pandas as pd
 
 from dataclasses import dataclass
-
-from sklearn.preprocessing import StandardScaler
 from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import train_test_split
-from sklearn.base import BaseEstimator, TransformerMixin
+# from sklearn.base import BaseEstimator, TransformerMixin
 
 from src.logger import logging
 from src.exception import CustomeException
@@ -19,6 +16,14 @@ from src.utils import save_object
 @dataclass
 class DataTransformationConfig:
     preprocess_obj_file_path = os.path.join("artifacts/data_transformation", "preprocessor.pkl")
+    feature_maps_path = os.path.join("artifacts/data_transformation", "feature_maps.pkl")
+    columns_path = os.path.join("artifacts/data_transformation", "columns.pkl")
+
+class FeatureMaps:
+    def __init__(self):
+        self.freq_maps = {}
+        self.count_maps = {}
+        self.agg_maps = {}
 
 class DataTransformation:
     def __init__(self):
@@ -64,19 +69,21 @@ class DataTransformation:
         try:
             logging.info("Starting feature engineering")
 
+            new_cols = {}
+
             # D column transformations (from Kaggle notebooks)
             d_cols = [col for col in df.columns if col.startswith("D")]
 
             for col in d_cols:
                 if pd.api.types.is_numeric_dtype(df[col]):
-                    df[col + "_log"] = np.log1p(df[col].fillna(0).clip(lower=0))
+                    new_cols[col + "_log"] = np.log1p(df[col].fillna(0).clip(lower=0))
                 else:
                     logging.warning(f"Skipping log transformation for non-numeric column {col}")
 
             # Transaction amount transformation
             if "TransactionAmt" in df.columns:
                 if pd.api.types.is_numeric_dtype(df["TransactionAmt"]):
-                    df["TransactionAmt_log"] = np.log1p(
+                    new_cols["TransactionAmt_log"] = np.log1p(
                     df["TransactionAmt"].fillna(0).clip(lower=0)
                     )
                 else:
@@ -84,19 +91,26 @@ class DataTransformation:
 
             # Email match feature
             if "P_emaildomain" in df.columns and "R_emaildomain" in df.columns:
-                df["email_match"] = (
+                new_cols["email_match"] = (
                     df["P_emaildomain"] == df["R_emaildomain"]
                 ).astype(int)
 
             # UID features
+
             if {'card1', 'card2'}.issubset(df.columns):
-                df['uid'] = df['card1'].astype(str)+"_"+df['card2'].astype(str)
+                uid = df['card1'].astype(str) + "_" + df['card2'].astype(str)
+                new_cols['uid'] = uid
 
-            if {'uid', 'addr1'}.issubset(df.columns):
-                df['uid2'] = df['uid']+"_"+df['addr1'].astype(str)
+            if 'uid' in new_cols and 'addr1' in df.columns:
+                uid2 = uid + "_" + df['addr1'].astype(str)
+                new_cols['uid2'] = uid2
 
-            if {'uid2', 'P_emaildomain'}.issubset(df.columns):
-                df['uid3'] = df['uid2']+"_"+df['P_emaildomain'].astype(str)
+            if 'uid2' in new_cols and 'P_emaildomain' in df.columns:
+                new_cols['uid3'] = uid2 + "_" + df['P_emaildomain'].astype(str)
+
+            if new_cols:
+                df = pd.concat([df, pd.DataFrame(new_cols)], axis=1)
+            df = df.copy() 
 
             logging.info("Feature engineering completed")
             return df
@@ -105,13 +119,15 @@ class DataTransformation:
             raise CustomeException(e, sys)
         
     # transaction aggregation
-    def transaction_aggregations(self,train_df, test_df):
+    def transaction_aggregations(self,train_df, test_df, maps: FeatureMaps):
         agg_cols = ["card1", "card2", "addr1", "uid"]
 
         for col in agg_cols:
             if col in train_df.columns and "TransactionAmt" in train_df.columns:
                 agg = train_df.groupby(col)['TransactionAmt'].agg(['mean','std']).astype('float32')
                 agg.columns = [f"{col}_amt_mean", f"{col}_amt_std"]
+
+                maps.agg_maps[col] = agg
 
                 train_df = train_df.merge(agg, on=col, how="left")
                 test_df = test_df.merge(agg, on=col, how="left")
@@ -123,13 +139,26 @@ class DataTransformation:
                 test_df[f"{col}_amt_std"].fillna(-1, inplace=True)
         return train_df, test_df
     
+    def apply_transaction_aggregations(self, df, maps: FeatureMaps):
+        for col, agg in maps.agg_maps.items():
+            df = df.merge(agg, on=col, how="left")
+
+            df[f"{col}_amt_diff"] = df["TransactionAmt"] - df[f"{col}_amt_mean"]
+
+            df[f"{col}_amt_mean"].fillna(-1, inplace=True)
+            df[f"{col}_amt_std"].fillna(-1, inplace=True)
+
+        return df
+    
     # transacton counts
-    def transaction_counts(self, train_df, test_df):
+    def transaction_counts(self, train_df, test_df, maps: FeatureMaps):
         cols = ["card1", "uid"]
 
         for col in cols:
             if col in train_df.columns:
                 count = train_df[col].value_counts()
+
+                maps.count_maps[col] = count
 
                 train_df[col + "_count"] = train_df[col].map(count)
                 test_df[col + "_count"] = test_df[col].map(count)
@@ -137,11 +166,13 @@ class DataTransformation:
         return train_df, test_df
         
     # FREQUENCY ENCODING
-    def frequency_encoding(self, train_df, test_df, columns):
+    def frequency_encoding(self, train_df, test_df, columns, maps: FeatureMaps):
 
         for col in columns:
             if col in train_df.columns:
                 freq = train_df[col].value_counts(normalize=True)
+
+                maps.freq_maps[col] = freq
 
                 train_df[col] = train_df[col].map(freq)
                 test_df[col] = test_df[col].map(freq)
@@ -176,6 +207,8 @@ class DataTransformation:
             test_df = pd.read_csv(test_path)
             logging.info("Train and Test data loaded")
 
+            maps = FeatureMaps()
+
             # column cleaning
             train_df = self.clean_columns(train_df)
             test_df = self.clean_columns(test_df)
@@ -184,8 +217,8 @@ class DataTransformation:
             train_df = self.feature_engineering(train_df)
             test_df = self.feature_engineering(test_df)
 
-            train_df, test_df = self.transaction_aggregations(train_df, test_df)
-            train_df, test_df = self.transaction_counts(train_df, test_df)
+            train_df, test_df = self.transaction_aggregations(train_df, test_df, maps)
+            train_df, test_df = self.transaction_counts(train_df, test_df, maps)
 
             # reduce memory
             train_df = self.reduce_memory(train_df)
@@ -203,7 +236,8 @@ class DataTransformation:
             train_df, test_df = self.frequency_encoding(
                 train_df,
                 test_df,
-                cat_cols
+                cat_cols,
+                maps
             )
 
             target_column = "isFraud"
@@ -216,8 +250,13 @@ class DataTransformation:
                 X, y, test_size=0.2, stratify=y, random_state=42
             )
 
-            train_arr = np.c_[X_train.values, y_train.values]
-            val_arr = np.c_[X_val.values, y_val.values]
+            # preprocessor
+            preprocessor = self.get_preprocessor()
+            preprocessor.fit(X_train)
+
+            save_object(self.data_transformation_config.preprocess_obj_file_path, preprocessor)
+            save_object(self.data_transformation_config.feature_maps_path, maps)
+            save_object(self.data_transformation_config.columns_path, X_train.columns.tolist())
 
             # ✅ FREE MEMORY HERE
             del train_df, test_df, X, y
@@ -227,25 +266,24 @@ class DataTransformation:
             logging.info('preprosessor saved')
 
             return (
-                train_arr,
-                val_arr
+                X_train, X_val, y_train, y_val
             )
 
         except Exception as e:
             raise CustomeException(e, sys)
         
-class FeatureEngineeringTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self):
-        self.data_transformation = DataTransformation()
+# class FeatureEngineeringTransformer(BaseEstimator, TransformerMixin):
+#     def __init__(self):
+#         self.data_transformation = DataTransformation()
 
-    def fit(self, X, y=None):
-        return self
+#     def fit(self, X, y=None):
+#         return self
 
-    def transform(self, X):
-        X = self.data_transformation.clean_columns(X)
-        X = self.data_transformation.feature_engineering(X)
+#     def transform(self, X):
+#         X = self.data_transformation.clean_columns(X)
+#         X = self.data_transformation.feature_engineering(X)
 
-        # ⚠️ keep only numeric
-        X = X.select_dtypes(exclude=["object"])
+#         # ⚠️ keep only numeric
+#         X = X.select_dtypes(exclude=["object"])
 
-        return X
+#         return X
