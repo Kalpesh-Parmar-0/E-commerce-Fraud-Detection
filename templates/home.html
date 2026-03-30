@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Fraud Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+            text-align: center;
+            padding: 30px;
+        }
+
+        h1 {
+            margin-bottom: 20px;
+        }
+
+        form {
+            background: #1e293b;
+            padding: 25px;
+            border-radius: 12px;
+            display: inline-block;
+            text-align: left;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 8px;
+            margin: 8px 0 15px;
+            border-radius: 6px;
+            border: none;
+        }
+
+        button {
+            width: 100%;
+            padding: 10px;
+            background: #22c55e;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #16a34a;
+        }
+    </style>
+</head>
+<body>
+
+<h1>💳 Fraud Detection System</h1>
+
+<form action="/" method="POST">
+
+    <label>Transaction Amount</label>
+    <input type="number" step="0.01" name="TransactionAmt" required>
+
+    <label>Product Code</label>
+    <input type="text" name="ProductCD" required>
+
+    <label>Card1</label>
+    <input type="number" name="card1" required>
+
+    <label>Card2</label>
+    <input type="number" name="card2">
+
+    <label>Card3</label>
+    <input type="number" name="card3">
+
+    <label>Card4</label>
+    <input type="text" name="card4">
+
+    <label>Card5</label>
+    <input type="number" name="card5">
+
+    <label>Card6</label>
+    <input type="text" name="card6">
+
+    <label>Address1</label>
+    <input type="number" name="addr1">
+
+    <label>Address2</label>
+    <input type="number" name="addr2">
+
+    <label>P Email Domain</label>
+    <input type="text" name="P_emaildomain">
+
+    <label>R Email Domain</label>
+    <input type="text" name="R_emaildomain">
+
+    <label>Device Type</label>
+    <input type="text" name="DeviceType">
+
+    <label>Device Info</label>
+    <input type="text" name="DeviceInfo">
+
+    <button type="submit">Predict</button>
+
+</form>
+
+</body>
+</html>

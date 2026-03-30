@@ -57,10 +57,15 @@ class PredictPipeline:
 
             df = self.data_transformation.reduce_memory(df)
             
-            preds = self.model.predict(df)
-            logging.info("Prediction completed")
+            proba = self.model.predict_proba(df)[:, 1]
+            logging.info(f"Fraud probability: {proba[0]}")
+
+            # custom threshold (very important for imbalanced data)
+            threshold = 0.2
+
+            preds = (proba > threshold).astype(int)
             
-            return preds
+            return preds, proba
         
         except Exception as e:
             raise CustomeException(e, sys)

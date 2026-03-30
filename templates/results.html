@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Prediction Result</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #0f172a;
+            color: white;
+            text-align: center;
+            padding-top: 100px;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 40px;
+            border-radius: 12px;
+            display: inline-block;
+        }
+
+        .fraud {
+            color: #ef4444;
+            font-size: 28px;
+        }
+
+        .not-fraud {
+            color: #22c55e;
+            font-size: 28px;
+        }
+
+        a {
+            display: block;
+            margin-top: 20px;
+            color: #38bdf8;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Prediction Result</h1>
+
+    {% if final_result == "Fraud" %}
+        <p class="fraud">🚨 Fraudulent Transaction Detected</p>
+        <p>Confidence Score: {{ probability }}</p>
+    {% else %}
+        <p class="not-fraud">✅ Legitimate Transaction</p>
+        <p>Confidence Score: {{ probability }}</p>
+    {% endif %}
+
+    <a href="/">Try Another Prediction</a>
+</div>
+
+</body>
+</html>
