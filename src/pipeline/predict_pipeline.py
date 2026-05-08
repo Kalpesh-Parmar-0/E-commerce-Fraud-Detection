@@ -12,6 +12,7 @@ class PredictPipeline:
             self.model = load_object("artifacts/model_trainer/model.pkl")
             self.maps = load_object("artifacts/data_transformation/feature_maps.pkl")
             self.columns = load_object("artifacts/data_transformation/columns.pkl")
+            self.preprocessor = load_object("artifacts/data_transformation/preprocessor.pkl")
 
             self.data_transformation = DataTransformation()
 
@@ -32,6 +33,12 @@ class PredictPipeline:
 
         return df
     
+    def apply_transaction_counts(self, df):
+        for col, count_map in self.maps.count_maps.items():
+            if col in df.columns:
+                df[col + "_count"] = df[col].map(count_map).fillna(0)
+        return df
+    
     # ✅ apply frequency encoding
     def apply_frequency_encoding(self, df):
         for col, freq_map in self.maps.freq_maps.items():
@@ -47,13 +54,19 @@ class PredictPipeline:
             df = self.data_transformation.feature_engineering(df)
 
             df = self.apply_transaction_aggregations(df)
+            df = self.apply_transaction_counts(df)
             df = self.apply_frequency_encoding(df)
 
             # keep only numeric
             df = df.select_dtypes(exclude=["object"])
 
-            # ensure same columns as training
-            df = df.reindex(columns=self.columns, fill_value=0)
+            # ensure same columns as training — fill missing with training medians, not 0
+            median_defaults = pd.Series(self.preprocessor.statistics_, index=self.columns)
+            df = df.reindex(columns=self.columns)
+
+            for col in df.columns:
+                if df[col].isna().any():
+                    df[col] = df[col].fillna(median_defaults[col])
 
             df = self.data_transformation.reduce_memory(df)
             

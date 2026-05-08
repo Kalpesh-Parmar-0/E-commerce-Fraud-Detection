@@ -37,7 +37,7 @@ class ModelTrainer:
 
             models = {
                 "Random Forest": RandomForestClassifier(class_weight='balanced', random_state=42, n_jobs=1),
-                "XGB Classifier": XGBClassifier(eval_metric='logloss', random_state=42, n_jobs=2),
+                "XGB Classifier": XGBClassifier(scale_pos_weight=28, eval_metric='logloss', random_state=42, n_jobs=2),
                 "LGB Classifier": LGBMClassifier(class_weight = 'balanced', random_state=42, n_jobs=2)
             }
 

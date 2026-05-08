@@ -36,7 +36,7 @@ def prediction_data ():
         if result == 1:
             return render_template("results.html", final_result = "Fraud", probability=round(confidence, 4))
         elif result == 0:
-            return render_template("results.html", final_resutl = "Not Fraud", probability=round(confidence, 4))
+            return render_template("results.html", final_result = "Not Fraud", probability=round(confidence, 4))
 
 if __name__ == "__main__":
     app.run(host = "0.0.0.0", debug = True)

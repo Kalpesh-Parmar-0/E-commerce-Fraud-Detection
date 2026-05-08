@@ -132,11 +132,11 @@ class DataTransformation:
                 train_df = train_df.merge(agg, on=col, how="left")
                 test_df = test_df.merge(agg, on=col, how="left")
 
-                train_df[f"{col}_amt_diff"] = train_df["TransactionAmt"] - train_df[f"{col}_amt_mean"]
-                test_df[f"{col}_amt_diff"] = test_df["TransactionAmt"] - test_df[f"{col}_amt_mean"]
-                
                 test_df[f"{col}_amt_mean"].fillna(-1, inplace=True)
                 test_df[f"{col}_amt_std"].fillna(-1, inplace=True)
+
+                train_df[f"{col}_amt_diff"] = train_df["TransactionAmt"] - train_df[f"{col}_amt_mean"]
+                test_df[f"{col}_amt_diff"] = test_df["TransactionAmt"] - test_df[f"{col}_amt_mean"]
         return train_df, test_df
     
     def apply_transaction_aggregations(self, df, maps: FeatureMaps):
